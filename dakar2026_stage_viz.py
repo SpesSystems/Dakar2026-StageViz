@@ -40,8 +40,7 @@ HTML_TEMPLATE = """
         .driver-photo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #e5e7eb; }
         .wp-cell { min-width: 80px; font-size: 0.75rem; }
         .table-scroll { overflow-x: auto; }
-        .sticky-col { position: sticky; left: 0; background: inherit; z-index: 10; }
-        .sticky-col-2 { position: sticky; left: 56px; background: inherit; z-index: 10; min-width: 280px; }
+        .sticky-col { position: sticky; left: 0; background: inherit; z-index: 10; min-width: 280px; }
         .pos-1 { background: linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%); }
         .pos-2 { background: linear-gradient(135deg, #f3f4f6 0%, #d1d5db 100%); }
         .pos-3 { background: linear-gradient(135deg, #fed7aa 0%, #fb923c 100%); }
@@ -57,72 +56,59 @@ HTML_TEMPLATE = """
 <body class="bg-gray-100 min-h-screen">
     <div id="app">
         <!-- Header -->
-        <div class="bg-gradient-to-r from-red-600 to-red-800 text-white p-4 shadow-lg">
-            <div class="max-w-full mx-auto px-4">
-                <div class="flex items-center justify-between flex-wrap gap-4">
-                    <div class="flex items-center gap-3">
-                        <span class="text-3xl">🏆</span>
-                        <div>
-                            <h1 class="text-2xl font-bold">Dakar Rally 2026</h1>
-                            <p class="text-red-200">Live Timing</p>
-                        </div>
+        <div class="bg-gradient-to-r from-red-600 to-red-800 text-white px-3 py-2 shadow-lg">
+            <div class="max-w-full mx-auto flex items-center justify-between flex-wrap gap-2">
+                <!-- Title + Categories -->
+                <div class="flex items-center gap-4 flex-wrap">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🏆</span>
+                        <h1 class="text-lg font-bold">Dakar 2026</h1>
                     </div>
-                    
-                    <div class="flex items-center gap-4 flex-wrap">
-                        <!-- Countdown Timer -->
-                        <div class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-2">
-                            <svg class="countdown-ring" width="32" height="32">
-                                <circle cx="16" cy="16" r="14" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>
-                                <circle id="countdown-circle" cx="16" cy="16" r="14" fill="none" stroke="white" stroke-width="3" 
-                                    stroke-dasharray="88" stroke-dashoffset="0" stroke-linecap="round"/>
-                            </svg>
-                            <div class="text-center">
-                                <div id="countdown-text" class="text-lg font-bold font-mono">15</div>
-                                <div class="text-xs text-red-200">sec</div>
-                            </div>
-                        </div>
-                        
-                        <select id="stage" onchange="fetchData()" class="bg-white/20 border border-white/30 rounded px-3 py-2 text-white">
-                            <option value="0" class="text-gray-800">Prologue</option>
-                            <option value="1" class="text-gray-800">Stage 1</option>
-                            <option value="2" class="text-gray-800">Stage 2</option>
-                            <option value="3" class="text-gray-800">Stage 3</option>
-                            <option value="4" class="text-gray-800">Stage 4</option>
-                            <option value="5" class="text-gray-800">Stage 5</option>
-                            <option value="6" class="text-gray-800">Stage 6</option>
-                            <option value="7" class="text-gray-800">Stage 7</option>
-                            <option value="8" selected class="text-gray-800">Stage 8</option>
-                            <option value="9" class="text-gray-800">Stage 9</option>
-                            <option value="10" class="text-gray-800">Stage 10</option>
-                            <option value="11" class="text-gray-800">Stage 11</option>
-                            <option value="12" class="text-gray-800">Stage 12</option>
-                            <option value="13" class="text-gray-800">Stage 13</option>
-                        </select>
-                        
-                        <button onclick="fetchData()" class="bg-white/20 hover:bg-white/30 border border-white/30 rounded px-4 py-2 flex items-center gap-2">
-                            <span id="refresh-icon">🔄</span> Refresh
-                        </button>
+
+                    <!-- Category Tabs inline -->
+                    <div class="flex gap-1" id="category-tabs">
+                        <button onclick="setCategory('M')" id="cat-M" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🏍️ Bikes</button>
+                        <button onclick="setCategory('A')" id="cat-A" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium active">🚗 Cars</button>
+                        <button onclick="setCategory('K')" id="cat-K" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🏛️ Classic</button>
+                        <button onclick="setCategory('F')" id="cat-F" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🔋 M1000</button>
                     </div>
+
+                    <!-- Sub-class filters inline -->
+                    <div class="flex gap-1" id="class-filters"></div>
                 </div>
-                
-                <!-- Category Tabs -->
-                <div class="mt-4 flex flex-wrap gap-2" id="category-tabs">
-                    <button onclick="setCategory('M')" id="cat-M" class="class-btn px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 font-semibold">
-                        🏍️ Bikes
+
+                <!-- Controls -->
+                <div class="flex items-center gap-2">
+                    <select id="stage" onchange="fetchData()" class="bg-white/20 border border-white/30 rounded px-2 py-1 text-sm text-white">
+                        <option value="0" selected class="text-gray-800">Prologue</option>
+                        <option value="1" class="text-gray-800">S1</option>
+                        <option value="2" class="text-gray-800">S2</option>
+                        <option value="3" class="text-gray-800">S3</option>
+                        <option value="4" class="text-gray-800">S4</option>
+                        <option value="5" class="text-gray-800">S5</option>
+                        <option value="6" class="text-gray-800">S6</option>
+                        <option value="7" class="text-gray-800">S7</option>
+                        <option value="8" class="text-gray-800">S8</option>
+                        <option value="9" class="text-gray-800">S9</option>
+                        <option value="10" class="text-gray-800">S10</option>
+                        <option value="11" class="text-gray-800">S11</option>
+                        <option value="12" class="text-gray-800">S12</option>
+                        <option value="13" class="text-gray-800">S13</option>
+                    </select>
+
+                    <!-- Compact Countdown -->
+                    <div class="flex items-center gap-1 bg-white/20 rounded px-2 py-1">
+                        <svg class="countdown-ring" width="20" height="20">
+                            <circle cx="10" cy="10" r="8" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+                            <circle id="countdown-circle" cx="10" cy="10" r="8" fill="none" stroke="white" stroke-width="2"
+                                stroke-dasharray="50" stroke-dashoffset="0" stroke-linecap="round"/>
+                        </svg>
+                        <span id="countdown-text" class="text-sm font-mono font-bold">15</span>
+                    </div>
+
+                    <button onclick="fetchData()" class="bg-white/20 hover:bg-white/30 border border-white/30 rounded px-2 py-1 text-sm">
+                        <span id="refresh-icon">🔄</span>
                     </button>
-                    <button onclick="setCategory('A')" id="cat-A" class="class-btn px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 font-semibold active">
-                        🚗 Cars
-                    </button>
-                    <button onclick="setCategory('K')" id="cat-K" class="class-btn px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 font-semibold">
-                        🏛️ Classic
-                    </button>
-                    <button onclick="setCategory('F')" id="cat-F" class="class-btn px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 font-semibold">
-                        🔋 Mission 1000
-                    </button>
-                </div>
-                
-                <!-- Sub-class filters -->
-                <div class="mt-3 flex flex-wrap gap-2" id="class-filters">
                 </div>
             </div>
         </div>
@@ -218,11 +204,25 @@ HTML_TEMPLATE = """
             // Cars (A) - Trucks
             '596e4eb3814731d718603e5313878fd2': 'trucks',
             '0aca7403b23b1d4308e5e124290e09bc': 'trucks',
+            // Bikes (M) - RallyGP (top factory riders)
+            'bb94ac9163db104dfb3b5f878235edb9': 'rallygp',
+            // Bikes (M) - Rally2 (larger field)
+            '978032dc39dd0c9245c7bc4097a72ac0': 'rally2',
         };
+
+        // Track unknown class IDs for debugging
+        const unknownClassIds = new Set();
         
         // Get the class name from class ID
         function getClassName(clazzId) {
-            return CLASS_ID_MAP[clazzId] || 'unknown';
+            if (!clazzId) return 'unknown';
+            if (CLASS_ID_MAP[clazzId]) return CLASS_ID_MAP[clazzId];
+            // Log unknown class IDs to console for debugging
+            if (!unknownClassIds.has(clazzId)) {
+                unknownClassIds.add(clazzId);
+                console.log('Unknown class ID:', clazzId, '- add to CLASS_ID_MAP');
+            }
+            return 'unknown';
         }
         
         const CLASS_CONFIG = {
@@ -247,6 +247,7 @@ HTML_TEMPLATE = """
                     'all': { name: 'All Bikes', icon: '🏍️' },
                     'rallygp': { name: 'RallyGP', icon: '🏆' },
                     'rally2': { name: 'Rally2', icon: '🏍️' },
+                    'original': { name: 'Original by Motul', icon: '🛡️' },
                 }
             },
             'K': {
@@ -308,7 +309,7 @@ HTML_TEMPLATE = """
             }
             document.getElementById('countdown-text').textContent = countdown;
             const circle = document.getElementById('countdown-circle');
-            const offset = 88 - (88 * countdown / 15);
+            const offset = 50 - (50 * countdown / 15);
             circle.style.strokeDashoffset = offset;
         }
 
@@ -346,17 +347,17 @@ HTML_TEMPLATE = """
         
         function setClass(cls) {
             currentClass = cls;
-            
+
             document.querySelectorAll('#class-filters button').forEach(btn => {
                 btn.classList.remove('active', 'bg-amber-500', 'text-white');
-                btn.classList.add('bg-gray-200', 'text-gray-700');
+                btn.classList.add('bg-white/80', 'text-gray-700');
             });
             const activeBtn = document.querySelector(`#class-filters button[data-class="${cls}"]`);
             if (activeBtn) {
                 activeBtn.classList.add('active', 'bg-amber-500', 'text-white');
-                activeBtn.classList.remove('bg-gray-200', 'text-gray-700');
+                activeBtn.classList.remove('bg-white/80', 'text-gray-700');
             }
-            
+
             if (rawData.length > 0) {
                 processedData = processData(rawData);
                 sortAndRender();
@@ -366,13 +367,13 @@ HTML_TEMPLATE = """
         function updateClassFilters() {
             const container = document.getElementById('class-filters');
             const config = CLASS_CONFIG[currentCategory];
-            
+
             let html = '';
             for (const [key, cls] of Object.entries(config.classes)) {
                 const isActive = key === currentClass;
-                const activeClass = isActive ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300';
-                html += `<button onclick="setClass('${key}')" data-class="${key}" 
-                    class="class-btn px-3 py-1.5 rounded-full text-sm font-medium ${activeClass}">
+                const activeClass = isActive ? 'bg-amber-500 text-white' : 'bg-white/80 text-gray-700 hover:bg-white';
+                html += `<button onclick="setClass('${key}')" data-class="${key}"
+                    class="class-btn px-2 py-1 rounded text-xs font-medium ${activeClass}">
                     ${cls.icon} ${cls.name}
                 </button>`;
             }
@@ -479,6 +480,7 @@ HTML_TEMPLATE = """
                     driverPhoto: getDriverPhoto(team.competitors),
                     nationality: team.competitors?.[0]?.nationality,
                     isW2RC: team.is?.w2rc,
+                    isOBM: team.is?.obm,  // Original by Motul flag
                     startPos: dss.position,
                     hasStarted: dss.real,
                     waypointData: waypointData,
@@ -486,10 +488,15 @@ HTML_TEMPLATE = """
                     latestOverallTime: latestOverallData?.absolute?.[0],
                 };
             });
-            
-            // Filter by actual class (using clazzName from API)
+
+            // Filter by actual class (using clazzName from API) or by OBM flag
             if (currentClass !== 'all') {
-                entries = entries.filter(e => e.clazzName === currentClass);
+                if (currentClass === 'original') {
+                    // Original by Motul is a flag, not a class
+                    entries = entries.filter(e => e.isOBM);
+                } else {
+                    entries = entries.filter(e => e.clazzName === currentClass);
+                }
             }
             
             // Calculate class-relative positions for STAGE at furthest reached waypoint
@@ -624,10 +631,7 @@ HTML_TEMPLATE = """
                 <table class="w-full">
                 <thead>
                 <tr class="bg-gray-800 text-white text-sm">
-                    <th class="sticky-col bg-gray-800 w-14 px-2 py-3 text-center sortable" onclick="sortBy('bib')">
-                        # ${getSortIndicator('bib')}
-                    </th>
-                    <th class="sticky-col-2 bg-gray-800 w-72 px-2 py-3 text-left">Driver / Vehicle</th>
+                    <th class="sticky-col bg-gray-800 w-72 px-2 py-3 text-left">Driver / Vehicle</th>
                     <th class="w-16 px-2 py-3 text-center border-l border-gray-600 sortable" onclick="sortBy('startPos')">
                         Start ${getSortIndicator('startPos')}
                     </th>
@@ -670,10 +674,7 @@ HTML_TEMPLATE = """
                 
                 html += `
                     <tr class="${rowBg} hover:bg-blue-50 transition-colors border-b border-gray-200">
-                        <td class="sticky-col ${rowBg} ${posClass} w-14 px-2 py-2 text-center font-bold text-lg">
-                            ${stagePos ? stageMedal + ' ' + stagePos : '<span class="text-gray-400">—</span>'}
-                        </td>
-                        <td class="sticky-col-2 ${rowBg} w-72 px-2 py-2">
+                        <td class="sticky-col ${rowBg} ${posClass} w-72 px-2 py-2">
                             <div class="flex items-center gap-2">
                                 ${photoHtml}
                                 <div class="min-w-0">
