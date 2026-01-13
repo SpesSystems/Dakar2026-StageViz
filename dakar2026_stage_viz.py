@@ -69,6 +69,7 @@ HTML_TEMPLATE = """
                     <div class="flex gap-1" id="category-tabs">
                         <button onclick="setCategory('M')" id="cat-M" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🏍️ Bikes</button>
                         <button onclick="setCategory('A')" id="cat-A" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium active">🚗 Cars</button>
+                        <button onclick="setCategory('T')" id="cat-T" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🚛 Trucks</button>
                         <button onclick="setCategory('K')" id="cat-K" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🏛️ Classic</button>
                         <button onclick="setCategory('F')" id="cat-F" class="class-btn px-2 py-1 rounded bg-white/20 hover:bg-white/30 text-sm font-medium">🔋 M1000</button>
                     </div>
@@ -250,20 +251,32 @@ HTML_TEMPLATE = """
                     'original': { name: 'Original by Motul', icon: '🛡️' },
                 }
             },
+            'T': {
+                name: 'Trucks',
+                icon: '🚛',
+                liveDisplay: true,
+                apiCategory: 'A',  // Trucks use Cars API
+                forceClass: 'trucks',  // Filter to trucks only
+                classes: {
+                    'all': { name: 'All Trucks', icon: '🚛' },
+                }
+            },
             'K': {
                 name: 'Classic',
                 icon: '🏛️',
                 liveDisplay: false,
+                usesCeRanking: true,  // Uses ce (classification) instead of waypoints
                 classes: {
                     'all': { name: 'All Classic', icon: '🏛️' },
                 }
             },
             'F': {
-                name: 'Future Mission 1000',
+                name: 'Mission 1000',
                 icon: '🔋',
                 liveDisplay: false,
+                usesCeRanking: true,  // Uses ce (classification) instead of waypoints
                 classes: {
-                    'all': { name: 'All Future', icon: '🔋' },
+                    'all': { name: 'All M1000', icon: '🔋' },
                 }
             }
         };
@@ -486,11 +499,21 @@ HTML_TEMPLATE = """
                     waypointData: waypointData,
                     latestStageTime: latestStageData?.absolute?.[0],
                     latestOverallTime: latestOverallData?.absolute?.[0],
+                    // Classic/M1000 use ce (classification) instead of cs/cg
+                    cePosition: ce.position?.[0],  // Overall position from API
+                    ceAbsolute: ce.absolute?.[0],  // Absolute ranking
+                    ceRelative: ce.relative?.[0],  // Relative ranking
                 };
             });
 
+            // Apply forceClass filter if category has one (e.g., Trucks category forces trucks class)
+            const forceClass = CLASS_CONFIG[currentCategory]?.forceClass;
+            if (forceClass) {
+                entries = entries.filter(e => e.clazzName === forceClass);
+            }
+
             // Filter by actual class (using clazzName from API) or by OBM flag
-            if (currentClass !== 'all') {
+            if (currentClass !== 'all' && !forceClass) {
                 if (currentClass === 'original') {
                     // Original by Motul is a flag, not a class
                     entries = entries.filter(e => e.isOBM);
@@ -498,94 +521,108 @@ HTML_TEMPLATE = """
                     entries = entries.filter(e => e.clazzName === currentClass);
                 }
             }
-            
-            // Calculate class-relative positions for STAGE at furthest reached waypoint
-            // Find the furthest waypoint that ANY entry has reached (last in sorted allWaypoints that has data)
-            let furthestReachedWp = null;
 
-            for (const wp of allWaypoints) {
-                const anyHaveThisWp = entries.some(e => e.waypointData[wp]?.stageTime);
-                if (anyHaveThisWp) {
-                    furthestReachedWp = wp;
+            // Check if this category uses ce ranking (Classic/M1000)
+            const usesCeRanking = CLASS_CONFIG[currentCategory]?.usesCeRanking;
+
+            if (usesCeRanking) {
+                // Classic/M1000: Use ce.position directly from API (no waypoint calculation)
+                stageComparisonWp = null;
+                entries.forEach(e => {
+                    e.classStagePos = e.cePosition;  // Use API-provided position
+                    e.classStageGap = null;  // No gap calculation for ce ranking
+                    e.stageWaypoint = null;
+                    e.classOverallPos = e.cePosition;  // Same as stage for ce ranking
+                    e.classOverallGap = null;
+                });
+            } else {
+                // Standard categories: Calculate positions based on waypoints
+
+                // Find the furthest waypoint that ANY entry has reached
+                let furthestReachedWp = null;
+                for (const wp of allWaypoints) {
+                    const anyHaveThisWp = entries.some(e => e.waypointData[wp]?.stageTime);
+                    if (anyHaveThisWp) {
+                        furthestReachedWp = wp;
+                    }
                 }
-            }
 
-            // Store the comparison waypoint globally for display
-            stageComparisonWp = furthestReachedWp;
+                // Store the comparison waypoint globally for display
+                stageComparisonWp = furthestReachedWp;
 
-            // Calculate positions based on furthest reached waypoint
-            // Only rank drivers who have reached that waypoint, by their time there
-            if (furthestReachedWp) {
-                const stageRanked = [...entries]
-                    .filter(e => e.waypointData[furthestReachedWp]?.stageTime)
-                    .sort((a, b) => a.waypointData[furthestReachedWp].stageTime - b.waypointData[furthestReachedWp].stageTime);
+                // Calculate positions based on furthest reached waypoint
+                if (furthestReachedWp) {
+                    const stageRanked = [...entries]
+                        .filter(e => e.waypointData[furthestReachedWp]?.stageTime)
+                        .sort((a, b) => a.waypointData[furthestReachedWp].stageTime - b.waypointData[furthestReachedWp].stageTime);
 
-                const stageLeaderTime = stageRanked[0]?.waypointData[furthestReachedWp]?.stageTime || 0;
+                    const stageLeaderTime = stageRanked[0]?.waypointData[furthestReachedWp]?.stageTime || 0;
 
-                stageRanked.forEach((entry, idx) => {
-                    entry.classStagePos = idx + 1;
-                    entry.classStageGap = entry.waypointData[furthestReachedWp].stageTime - stageLeaderTime;
-                    entry.stageWaypoint = furthestReachedWp;
+                    stageRanked.forEach((entry, idx) => {
+                        entry.classStagePos = idx + 1;
+                        entry.classStageGap = entry.waypointData[furthestReachedWp].stageTime - stageLeaderTime;
+                        entry.stageWaypoint = furthestReachedWp;
+                    });
+
+                    // Drivers who haven't reached the furthest waypoint yet get no position
+                    entries.filter(e => !e.waypointData[furthestReachedWp]?.stageTime).forEach(e => {
+                        e.classStagePos = null;
+                        e.classStageGap = null;
+                        e.stageWaypoint = null;
+                    });
+                } else {
+                    // No waypoint data at all
+                    entries.forEach(e => {
+                        e.classStagePos = null;
+                        e.classStageGap = null;
+                        e.stageWaypoint = null;
+                    });
+                }
+
+                // Calculate class-relative positions for OVERALL RALLY at the same waypoint as stage
+                // This ensures fair comparison - only rank drivers who have reached furthestReachedWp
+                if (furthestReachedWp) {
+                    const overallRanked = [...entries]
+                        .filter(e => e.waypointData[furthestReachedWp]?.overallTime)
+                        .sort((a, b) => a.waypointData[furthestReachedWp].overallTime - b.waypointData[furthestReachedWp].overallTime);
+
+                    const overallLeaderTime = overallRanked[0]?.waypointData[furthestReachedWp]?.overallTime || 0;
+
+                    overallRanked.forEach((entry, idx) => {
+                        entry.classOverallPos = idx + 1;
+                        entry.classOverallGap = entry.waypointData[furthestReachedWp].overallTime - overallLeaderTime;
+                        entry.overallAtWp = furthestReachedWp;
+                    });
+
+                    // Drivers who haven't reached the furthest waypoint yet get no position
+                    entries.filter(e => !e.waypointData[furthestReachedWp]?.overallTime).forEach(e => {
+                        e.classOverallPos = null;
+                        e.classOverallGap = null;
+                        e.overallAtWp = null;
+                    });
+                } else {
+                    entries.forEach(e => {
+                        e.classOverallPos = null;
+                        e.classOverallGap = null;
+                        e.overallAtWp = null;
+                    });
+                }
+
+                // Calculate class-relative positions for each WAYPOINT
+                allWaypoints.forEach(wp => {
+                    const wpRanked = [...entries]
+                        .filter(e => e.waypointData[wp]?.stageTime)
+                        .sort((a, b) => a.waypointData[wp].stageTime - b.waypointData[wp].stageTime);
+
+                    const wpLeaderTime = wpRanked[0]?.waypointData[wp]?.stageTime || 0;
+
+                    wpRanked.forEach((entry, idx) => {
+                        entry.waypointData[wp].classPos = idx + 1;
+                        entry.waypointData[wp].classGap = entry.waypointData[wp].stageTime - wpLeaderTime;
+                    });
                 });
+            }  // end of else (standard categories)
 
-                // Drivers who haven't reached the furthest waypoint yet get no position
-                entries.filter(e => !e.waypointData[furthestReachedWp]?.stageTime).forEach(e => {
-                    e.classStagePos = null;
-                    e.classStageGap = null;
-                    e.stageWaypoint = null;
-                });
-            } else {
-                // No waypoint data at all
-                entries.forEach(e => {
-                    e.classStagePos = null;
-                    e.classStageGap = null;
-                    e.stageWaypoint = null;
-                });
-            }
-            
-            // Calculate class-relative positions for OVERALL RALLY at the same waypoint as stage
-            // This ensures fair comparison - only rank drivers who have reached furthestReachedWp
-            if (furthestReachedWp) {
-                const overallRanked = [...entries]
-                    .filter(e => e.waypointData[furthestReachedWp]?.overallTime)
-                    .sort((a, b) => a.waypointData[furthestReachedWp].overallTime - b.waypointData[furthestReachedWp].overallTime);
-
-                const overallLeaderTime = overallRanked[0]?.waypointData[furthestReachedWp]?.overallTime || 0;
-
-                overallRanked.forEach((entry, idx) => {
-                    entry.classOverallPos = idx + 1;
-                    entry.classOverallGap = entry.waypointData[furthestReachedWp].overallTime - overallLeaderTime;
-                    entry.overallAtWp = furthestReachedWp;
-                });
-
-                // Drivers who haven't reached the furthest waypoint yet get no position
-                entries.filter(e => !e.waypointData[furthestReachedWp]?.overallTime).forEach(e => {
-                    e.classOverallPos = null;
-                    e.classOverallGap = null;
-                    e.overallAtWp = null;
-                });
-            } else {
-                entries.forEach(e => {
-                    e.classOverallPos = null;
-                    e.classOverallGap = null;
-                    e.overallAtWp = null;
-                });
-            }
-            
-            // Calculate class-relative positions for each WAYPOINT
-            allWaypoints.forEach(wp => {
-                const wpRanked = [...entries]
-                    .filter(e => e.waypointData[wp]?.stageTime)
-                    .sort((a, b) => a.waypointData[wp].stageTime - b.waypointData[wp].stageTime);
-                
-                const wpLeaderTime = wpRanked[0]?.waypointData[wp]?.stageTime || 0;
-                
-                wpRanked.forEach((entry, idx) => {
-                    entry.waypointData[wp].classPos = idx + 1;
-                    entry.waypointData[wp].classGap = entry.waypointData[wp].stageTime - wpLeaderTime;
-                });
-            });
-            
             return entries;
         }
         
@@ -599,18 +636,28 @@ HTML_TEMPLATE = """
             const hasData = entries.filter(e => e.classStagePos).length;
             const onStage = entries.filter(e => e.hasStarted && !e.classStagePos).length;
             const notStarted = entries.filter(e => !e.hasStarted).length;
-            
+            const usesCeRanking = CLASS_CONFIG[currentCategory]?.usesCeRanking;
+
             const classInfo = CLASS_CONFIG[currentCategory]?.classes[currentClass];
             const className = classInfo?.name || 'All';
-            
-            document.getElementById('stats').innerHTML = `
-                <div class="flex items-center gap-2"><strong>${className}</strong></div>
-                <div class="flex items-center gap-2">🏁 <strong>${totalInClass}</strong> Competitors</div>
-                <div class="flex items-center gap-2">📍 <strong>${hasData}</strong> At Waypoints</div>
-                <div class="flex items-center gap-2">🚗 <strong>${onStage}</strong> On Stage</div>
-                <div class="flex items-center gap-2">⏳ <strong>${notStarted}</strong> Waiting</div>
-            `;
-            
+
+            // Different stats for ce ranking categories
+            if (usesCeRanking) {
+                document.getElementById('stats').innerHTML = `
+                    <div class="flex items-center gap-2"><strong>${className}</strong></div>
+                    <div class="flex items-center gap-2">🏁 <strong>${totalInClass}</strong> Competitors</div>
+                    <div class="flex items-center gap-2">📊 <strong>${hasData}</strong> Ranked</div>
+                `;
+            } else {
+                document.getElementById('stats').innerHTML = `
+                    <div class="flex items-center gap-2"><strong>${className}</strong></div>
+                    <div class="flex items-center gap-2">🏁 <strong>${totalInClass}</strong> Competitors</div>
+                    <div class="flex items-center gap-2">📍 <strong>${hasData}</strong> At Waypoints</div>
+                    <div class="flex items-center gap-2">🚗 <strong>${onStage}</strong> On Stage</div>
+                    <div class="flex items-center gap-2">⏳ <strong>${notStarted}</strong> Waiting</div>
+                `;
+            }
+
             if (entries.length === 0) {
                 document.getElementById('content').innerHTML = `
                     <div class="p-12 text-center">
@@ -619,30 +666,31 @@ HTML_TEMPLATE = """
                 `;
                 return;
             }
-            
-            let wpHeaders = allWaypoints.map((wp, idx) =>
-                `<th class="wp-cell px-2 py-2 text-center border-l border-gray-600 sortable" onclick="sortBy('wp_${wp}')">
-                    <div class="font-semibold">WP${wp.slice(2)} ${getSortIndicator('wp_' + wp)}</div>
-                </th>`
-            ).join('');
-            
+
+            // For ce ranking categories, don't show waypoint columns
+            let wpHeaders = '';
+            if (!usesCeRanking) {
+                wpHeaders = allWaypoints.map((wp, idx) =>
+                    `<th class="wp-cell px-2 py-2 text-center border-l border-gray-600 sortable" onclick="sortBy('wp_${wp}')">
+                        <div class="font-semibold">WP${wp.slice(2)} ${getSortIndicator('wp_' + wp)}</div>
+                    </th>`
+                ).join('');
+            }
+
+            // Different header for ce ranking categories
             let html = `
                 <div class="table-scroll">
                 <table class="w-full">
                 <thead>
                 <tr class="bg-gray-800 text-white text-sm">
                     <th class="sticky-col bg-gray-800 w-72 px-2 py-3 text-left">Driver / Vehicle</th>
-                    <th class="w-16 px-2 py-3 text-center border-l border-gray-600 sortable" onclick="sortBy('startPos')">
+                    ${!usesCeRanking ? `<th class="w-16 px-2 py-3 text-center border-l border-gray-600 sortable" onclick="sortBy('startPos')">
                         Start ${getSortIndicator('startPos')}
-                    </th>
+                    </th>` : ''}
                     ${wpHeaders}
-                    <th class="w-28 px-2 py-3 text-center border-l border-gray-600 bg-blue-900 sortable" onclick="sortBy('classStagePos')">
-                        <div>Stage ${getSortIndicator('classStagePos')}</div>
-                        <div class="text-xs text-blue-300">${stageComparisonWp ? '@WP' + stageComparisonWp.slice(2) : 'in Class'}</div>
-                    </th>
                     <th class="w-28 px-2 py-3 text-center border-l border-gray-600 bg-green-900 sortable" onclick="sortBy('classOverallPos')">
-                        <div>Rally ${getSortIndicator('classOverallPos')}</div>
-                        <div class="text-xs text-green-300">${stageComparisonWp ? '@WP' + stageComparisonWp.slice(2) : 'in Class'}</div>
+                        <div>Position ${getSortIndicator('classOverallPos')}</div>
+                        <div class="text-xs text-green-300">${usesCeRanking ? 'Overall' : (stageComparisonWp ? '@WP' + stageComparisonWp.slice(2) : 'in Class')}</div>
                     </th>
                 </tr>
                 </thead>
@@ -653,61 +701,84 @@ HTML_TEMPLATE = """
                 const stagePos = e.classStagePos;
                 const posClass = stagePos === 1 ? 'pos-1' : stagePos === 2 ? 'pos-2' : stagePos === 3 ? 'pos-3' : '';
                 const rowBg = e.isW2RC ? 'bg-amber-50' : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50');
-                const stageMedal = stagePos === 1 ? '🥇' : stagePos === 2 ? '🥈' : stagePos === 3 ? '🥉' : '';
-                
-                let wpCells = allWaypoints.map(wp => {
-                    const wpData = e.waypointData[wp];
-                    if (wpData && wpData.stageTime) {
-                        const posColor = wpData.classPos <= 3 ? 'text-amber-600 font-bold' : 'text-gray-700';
-                        return `<td class="wp-cell px-2 py-2 text-center border-l border-gray-200">
-                            <div class="${posColor}">P${wpData.classPos || '-'}</div>
-                            <div class="text-xs text-gray-600 font-mono">${formatTime(wpData.stageTime)}</div>
-                            <div class="text-xs text-red-600">${formatGap(wpData.classGap)}</div>
-                        </td>`;
-                    }
-                    return `<td class="wp-cell px-2 py-2 text-center border-l border-gray-200 text-gray-300">-</td>`;
-                }).join('');
-                
-                const photoHtml = e.driverPhoto 
+
+                // Only generate wpCells for non-ce ranking categories
+                let wpCells = '';
+                if (!usesCeRanking) {
+                    wpCells = allWaypoints.map(wp => {
+                        const wpData = e.waypointData[wp];
+                        if (wpData && wpData.stageTime) {
+                            const posColor = wpData.classPos <= 3 ? 'text-amber-600 font-bold' : 'text-gray-700';
+                            return `<td class="wp-cell px-2 py-2 text-center border-l border-gray-200">
+                                <div class="${posColor}">P${wpData.classPos || '-'}</div>
+                                <div class="text-xs text-gray-600 font-mono">${formatTime(wpData.stageTime)}</div>
+                                <div class="text-xs text-red-600">${formatGap(wpData.classGap)}</div>
+                            </td>`;
+                        }
+                        return `<td class="wp-cell px-2 py-2 text-center border-l border-gray-200 text-gray-300">-</td>`;
+                    }).join('');
+                }
+
+                const photoHtml = e.driverPhoto
                     ? `<img src="${e.driverPhoto}" class="driver-photo" onerror="this.style.display='none'" alt="">`
                     : `<div class="driver-photo bg-gray-200 flex items-center justify-center text-gray-400 text-lg">${getFlag(e.nationality)}</div>`;
-                
-                html += `
-                    <tr class="${rowBg} hover:bg-blue-50 transition-colors border-b border-gray-200">
-                        <td class="sticky-col ${rowBg} ${posClass} w-72 px-2 py-2">
-                            <div class="flex items-center gap-2">
-                                ${photoHtml}
-                                <div class="min-w-0">
-                                    <div class="flex items-center gap-1">
-                                        <span class="bg-gray-800 text-white px-1.5 py-0.5 rounded text-xs font-mono">${e.bib}</span>
-                                        <span class="text-sm">${getFlag(e.nationality)}</span>
-                                        <span class="font-semibold text-sm truncate">${e.driver}</span>
+
+                if (usesCeRanking) {
+                    // Simplified row for Classic/M1000 - just position
+                    html += `
+                        <tr class="${rowBg} hover:bg-blue-50 transition-colors border-b border-gray-200">
+                            <td class="sticky-col ${rowBg} ${posClass} w-72 px-2 py-2">
+                                <div class="flex items-center gap-2">
+                                    ${photoHtml}
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-1">
+                                            <span class="bg-gray-800 text-white px-1.5 py-0.5 rounded text-xs font-mono">${e.bib}</span>
+                                            <span class="text-sm">${getFlag(e.nationality)}</span>
+                                            <span class="font-semibold text-sm truncate">${e.driver}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500 truncate">${e.brand || ''} ${e.model || ''}</div>
                                     </div>
-                                    <div class="text-xs text-gray-500 truncate">${e.brand || ''} ${e.model || ''}</div>
                                 </div>
-                            </div>
-                        </td>
-                        <td class="w-16 px-2 py-2 text-center border-l border-gray-200">
-                            <div class="text-sm font-semibold">${e.startPos || '-'}</div>
-                            <div class="text-xs ${e.hasStarted ? 'text-green-500' : 'text-gray-400'}">${e.hasStarted ? '✓ GO' : '⏳'}</div>
-                        </td>
-                        ${wpCells}
-                        <td class="w-28 px-2 py-2 text-center border-l border-gray-200 bg-blue-50">
-                            ${e.classStagePos ? `
-                                <div class="font-bold text-blue-700">P${e.classStagePos}</div>
-                                <div class="font-mono text-blue-800">${formatTime(stageComparisonWp ? e.waypointData[stageComparisonWp]?.stageTime : e.latestStageTime)}</div>
-                                <div class="text-xs text-red-600 font-semibold">${formatGap(e.classStageGap)}</div>
-                            ` : '<span class="text-gray-400">—</span>'}
-                        </td>
-                        <td class="w-28 px-2 py-2 text-center border-l border-gray-200 bg-green-50">
-                            ${e.classOverallPos ? `
-                                <div class="font-bold text-green-700">P${e.classOverallPos}</div>
-                                <div class="font-mono text-green-800 text-sm">${formatTime(stageComparisonWp ? e.waypointData[stageComparisonWp]?.overallTime : null)}</div>
-                                <div class="text-xs text-red-600 font-semibold">${formatGap(e.classOverallGap)}</div>
-                            ` : '<span class="text-gray-400">—</span>'}
-                        </td>
-                    </tr>
-                `;
+                            </td>
+                            <td class="w-28 px-2 py-2 text-center border-l border-gray-200 bg-green-50">
+                                ${e.classOverallPos ? `
+                                    <div class="font-bold text-green-700 text-lg">P${e.classOverallPos}</div>
+                                ` : '<span class="text-gray-400">—</span>'}
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    // Full row for Bikes/Cars/Trucks with waypoints and times
+                    html += `
+                        <tr class="${rowBg} hover:bg-blue-50 transition-colors border-b border-gray-200">
+                            <td class="sticky-col ${rowBg} ${posClass} w-72 px-2 py-2">
+                                <div class="flex items-center gap-2">
+                                    ${photoHtml}
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-1">
+                                            <span class="bg-gray-800 text-white px-1.5 py-0.5 rounded text-xs font-mono">${e.bib}</span>
+                                            <span class="text-sm">${getFlag(e.nationality)}</span>
+                                            <span class="font-semibold text-sm truncate">${e.driver}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500 truncate">${e.brand || ''} ${e.model || ''}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="w-16 px-2 py-2 text-center border-l border-gray-200">
+                                <div class="text-sm font-semibold">${e.startPos || '-'}</div>
+                                <div class="text-xs ${e.hasStarted ? 'text-green-500' : 'text-gray-400'}">${e.hasStarted ? '✓ GO' : '⏳'}</div>
+                            </td>
+                            ${wpCells}
+                            <td class="w-28 px-2 py-2 text-center border-l border-gray-200 bg-green-50">
+                                ${e.classOverallPos ? `
+                                    <div class="font-bold text-green-700">P${e.classOverallPos}</div>
+                                    <div class="font-mono text-green-800 text-sm">${formatTime(stageComparisonWp ? e.waypointData[stageComparisonWp]?.overallTime : null)}</div>
+                                    <div class="text-xs text-red-600 font-semibold">${formatGap(e.classOverallGap)}</div>
+                                ` : '<span class="text-gray-400">—</span>'}
+                            </td>
+                        </tr>
+                    `;
+                }
             });
             
             html += '</tbody></table></div>';
@@ -718,12 +789,14 @@ HTML_TEMPLATE = """
 
         async function fetchData() {
             const stage = document.getElementById('stage').value;
-            
+            // Use apiCategory if defined (e.g., Trucks uses Cars API)
+            const apiCategory = CLASS_CONFIG[currentCategory]?.apiCategory || currentCategory;
+
             document.getElementById('loading-indicator').classList.remove('hidden');
             document.getElementById('refresh-icon').innerHTML = '<div class="loader" style="width:16px;height:16px;border-width:2px;"></div>';
-            
+
             try {
-                const response = await fetch(`/api/lastScore?year=2026&category=${currentCategory}&stage=${stage}`);
+                const response = await fetch(`/api/lastScore?year=2026&category=${apiCategory}&stage=${stage}`);
                 const data = await response.json();
                 
                 if (data.error) {
@@ -737,13 +810,24 @@ HTML_TEMPLATE = """
                 }
                 
                 if (!data || data.length === 0) {
+                    const stageLabel = stage === '0' ? 'Prologue' : `Stage ${stage}`;
                     document.getElementById('content').innerHTML = `
                         <div class="p-12 text-center">
-                            <p class="text-gray-500">No data available for ${CLASS_CONFIG[currentCategory]?.name || currentCategory} - Stage ${stage}</p>
-                            <p class="text-gray-400 text-sm mt-2">This category may not have live timing or the stage hasn't started yet.</p>
+                            <div class="text-6xl mb-4">📡</div>
+                            <p class="text-xl text-gray-600 font-semibold">No data available</p>
+                            <p class="text-gray-500 mt-2">${CLASS_CONFIG[currentCategory]?.name || currentCategory} - ${stageLabel}</p>
+                            <p class="text-gray-400 text-sm mt-4">Possible reasons:</p>
+                            <ul class="text-gray-400 text-sm mt-1 list-disc list-inside">
+                                <li>The stage hasn't started yet</li>
+                                <li>Live timing data is not yet available</li>
+                                <li>The API may be temporarily unavailable</li>
+                            </ul>
+                            <button onclick="fetchData()" class="mt-6 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition">
+                                🔄 Try Again
+                            </button>
                         </div>
                     `;
-                    document.getElementById('stats').innerHTML = '<span class="text-gray-500">No data</span>';
+                    document.getElementById('stats').innerHTML = '<span class="text-gray-500">No data available</span>';
                     return;
                 }
                 
@@ -785,13 +869,27 @@ def get_last_score():
     year = request.args.get('year', '2026')
     category = request.args.get('category', 'M')
     stage = request.args.get('stage', '8')
-    
+
     url = f"{API_BASE}/lastScore-{year}-{category}-{stage}"
-    
+
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        return jsonify(response.json())
+
+        # Handle empty response (stage not yet available)
+        if not response.text or response.text.strip() == '':
+            return jsonify([])
+
+        data = response.json()
+
+        # Handle various empty data formats
+        if data is None:
+            return jsonify([])
+
+        return jsonify(data)
+    except requests.exceptions.JSONDecodeError:
+        # API returned non-JSON response (likely empty or error page)
+        return jsonify([])
     except requests.exceptions.RequestException as e:
         return jsonify({"error": str(e)}), 500
 
