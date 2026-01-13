@@ -452,9 +452,10 @@ HTML_TEMPLATE = """
                 
                 const waypointData = {};
                 allWaypoints.forEach(wp => {
-                    if (cs[wp]) {
+                    if (cs[wp] || cg[wp]) {
                         waypointData[wp] = {
-                            stageTime: cs[wp].absolute?.[0],
+                            stageTime: cs[wp]?.absolute?.[0],
+                            overallTime: cg[wp]?.absolute?.[0],
                         };
                     }
                 });
@@ -535,22 +536,34 @@ HTML_TEMPLATE = """
                 });
             }
             
-            // Calculate class-relative positions for OVERALL RALLY
-            const overallRanked = [...entries]
-                .filter(e => e.latestOverallTime)
-                .sort((a, b) => a.latestOverallTime - b.latestOverallTime);
-            
-            const overallLeaderTime = overallRanked[0]?.latestOverallTime || 0;
-            
-            overallRanked.forEach((entry, idx) => {
-                entry.classOverallPos = idx + 1;
-                entry.classOverallGap = entry.latestOverallTime - overallLeaderTime;
-            });
-            
-            entries.filter(e => !e.latestOverallTime).forEach(e => {
-                e.classOverallPos = null;
-                e.classOverallGap = null;
-            });
+            // Calculate class-relative positions for OVERALL RALLY at the same waypoint as stage
+            // This ensures fair comparison - only rank drivers who have reached furthestReachedWp
+            if (furthestReachedWp) {
+                const overallRanked = [...entries]
+                    .filter(e => e.waypointData[furthestReachedWp]?.overallTime)
+                    .sort((a, b) => a.waypointData[furthestReachedWp].overallTime - b.waypointData[furthestReachedWp].overallTime);
+
+                const overallLeaderTime = overallRanked[0]?.waypointData[furthestReachedWp]?.overallTime || 0;
+
+                overallRanked.forEach((entry, idx) => {
+                    entry.classOverallPos = idx + 1;
+                    entry.classOverallGap = entry.waypointData[furthestReachedWp].overallTime - overallLeaderTime;
+                    entry.overallAtWp = furthestReachedWp;
+                });
+
+                // Drivers who haven't reached the furthest waypoint yet get no position
+                entries.filter(e => !e.waypointData[furthestReachedWp]?.overallTime).forEach(e => {
+                    e.classOverallPos = null;
+                    e.classOverallGap = null;
+                    e.overallAtWp = null;
+                });
+            } else {
+                entries.forEach(e => {
+                    e.classOverallPos = null;
+                    e.classOverallGap = null;
+                    e.overallAtWp = null;
+                });
+            }
             
             // Calculate class-relative positions for each WAYPOINT
             allWaypoints.forEach(wp => {
@@ -625,7 +638,7 @@ HTML_TEMPLATE = """
                     </th>
                     <th class="w-28 px-2 py-3 text-center border-l border-gray-600 bg-green-900 sortable" onclick="sortBy('classOverallPos')">
                         <div>Rally ${getSortIndicator('classOverallPos')}</div>
-                        <div class="text-xs text-green-300">in Class</div>
+                        <div class="text-xs text-green-300">${stageComparisonWp ? '@WP' + stageComparisonWp.slice(2) : 'in Class'}</div>
                     </th>
                 </tr>
                 </thead>
@@ -686,9 +699,9 @@ HTML_TEMPLATE = """
                             ` : '<span class="text-gray-400">—</span>'}
                         </td>
                         <td class="w-28 px-2 py-2 text-center border-l border-gray-200 bg-green-50">
-                            ${e.latestOverallTime ? `
+                            ${e.classOverallPos ? `
                                 <div class="font-bold text-green-700">P${e.classOverallPos}</div>
-                                <div class="font-mono text-green-800 text-sm">${formatTime(e.latestOverallTime)}</div>
+                                <div class="font-mono text-green-800 text-sm">${formatTime(stageComparisonWp ? e.waypointData[stageComparisonWp]?.overallTime : null)}</div>
                                 <div class="text-xs text-red-600 font-semibold">${formatGap(e.classOverallGap)}</div>
                             ` : '<span class="text-gray-400">—</span>'}
                         </td>
@@ -797,18 +810,18 @@ def get_category():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🏆 Dakar Rally 2026 Live Timing Server v8")
+    print("🏆 Dakar Rally 2026 Stage Visualizer")
+    print("   by Spes Systems")
     print("=" * 60)
-    print(f"Starting server at http://localhost:5000")
-    print(f"API Source: {API_BASE}")
+    print(f"Starting server at http://localhost:5001")
     print("-" * 60)
     print("Features:")
-    print("  • Uses actual class IDs from API (team.clazz)")
     print("  • Class-relative positions based on real class membership")
     print("  • Simplified sorting (always P1 to last)")
     print("  • 15 second auto-refresh with countdown timer")
     print("  • Driver photos")
     print("-" * 60)
+    print("Feedback: lukas@spes.systems")
     print("Press Ctrl+C to stop")
     print("=" * 60)
     
